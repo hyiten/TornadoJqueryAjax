@@ -1,5 +1,6 @@
 import tornado.ioloop
 import tornado.web
+import tornado.websocket as ws
 import json
 import sqlite3
 import time
@@ -7,6 +8,9 @@ import hashlib
 import uuid
 from os import listdir
 from os.path import isfile, join
+from tornado.options import define, options, parse_command_line
+
+define("port", default=8888, type=int)
 
 proctected_image_array = {}
 session_array = {}
@@ -225,9 +229,25 @@ class LoadImageHandler(tornado.web.RequestHandler):
         self.add_header("Content-length", len(data))
         self.write(data)
 
+class WebSocketHandler(ws.WebSocketHandler):
+    def open(self, *args):
+        print("New connection")
+        self.write_message("Welcome!")
+
+    def on_message(self, message):
+        print("New message {}".format(message))
+        self.write_message(message.upper())
+
+    def on_close(self):
+        print("Connection closed")
+        
+    def check_origin(self, origin):
+        return True    
+
 def make_app():
     return tornado.web.Application([
         (r"/", MainHandler), # The root path
+        (r'/ws/', WebSocketHandler),
         (r"/api/login", LoginHandler), # The API to login
         (r"/api/loadimage", LoadImageHandler), # The API to load images")
         (r"/dashboard", DashboardHandler), # After Login we show the dashboard check for session
@@ -239,6 +259,7 @@ def make_app():
     ])
 
 if __name__ == "__main__":
+    print('Server Started...')
     app = make_app()
-    app.listen(8888)
-    tornado.ioloop.IOLoop.current().start()
+    app.listen(options.port)
+    tornado.ioloop.IOLoop.instance().start()
