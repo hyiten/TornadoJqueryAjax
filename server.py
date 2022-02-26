@@ -234,15 +234,23 @@ class WebSocketHandler(ws.WebSocketHandler):
         # all new connections will get this message
         # so what we need to do is to pair the same client with the same session
         # still thinking on how to do this
-        self.write_message({'action': 'challenge', 'data': ''})
+        self.write_message({'controlCode':0, 'action': 'challenge', 'data': ''})
 
     def on_message(self, message):
+        reply = {"action": "error", "data": "message not understood"}
         try:
             Jmessage = json.loads(message)
+            sessionkey = Jmessage['session']
+            if (StdLib.CheckSession(sessionkey)):
+                print('sessionkey: ' + sessionkey + ', is valid')
+                reply = {'controlCode':0, 'data': 'OK'}
+            else:
+                print('sessionkey: ' + sessionkey + ', is invalid')
+                reply = {'controlCode':1003, 'data': 'session not valid'}
         except:
-            Jmessage = {'error': 'Could not parse JSON'}
+            reply = {'controlCode':1005,'data': 'invalid sessionkey'}
         print("New message {}".format(Jmessage))
-        self.write_message({'action': 'message', 'data': 'received'})
+        self.write_message(reply)
 
     def on_close(self):
         print("Connection closed")
