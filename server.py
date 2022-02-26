@@ -232,11 +232,15 @@ class LoadImageHandler(tornado.web.RequestHandler):
 class WebSocketHandler(ws.WebSocketHandler):
     def open(self, *args):
         print("New connection")
-        self.write_message("Welcome!")
+        self.write_message({'action': 'challenge', 'data': ''})
 
     def on_message(self, message):
-        print("New message {}".format(message))
-        self.write_message(message.upper())
+        try:
+            Jmessage = json.loads(message)
+        except:
+            Jmessage = {'error': 'Could not parse JSON'}
+        print("New message {}".format(Jmessage))
+        self.write_message({'action': 'message', 'data': 'received'})
 
     def on_close(self):
         print("Connection closed")
