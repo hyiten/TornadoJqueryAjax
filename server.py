@@ -231,7 +231,9 @@ class LoadImageHandler(tornado.web.RequestHandler):
 
 class WebSocketHandler(ws.WebSocketHandler):
     def open(self, *args):
-        print("New connection")
+        # all new connections will get this message
+        # so what we need to do is to pair the same client with the same session
+        # still thinking on how to do this
         self.write_message({'action': 'challenge', 'data': ''})
 
     def on_message(self, message):
