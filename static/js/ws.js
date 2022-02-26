@@ -16,7 +16,8 @@ function connect() {
       ws.send(JSON.stringify({
           //.... some message the I must send when I connect ....
         "session": sessionkey,
-        "action": "subscribe"
+        "action": "subscribe",
+        "data": ""
       }));
     };
   

@@ -1,3 +1,4 @@
+import re
 import tornado.ioloop
 import tornado.web
 import tornado.websocket as ws
@@ -6,6 +7,9 @@ import sqlite3
 import time
 import hashlib
 import uuid
+import logging
+from watchdog.observers import Observer
+from watchdog.events import LoggingEventHandler
 from os import listdir
 from os.path import isfile, join
 from tornado.options import define, options, parse_command_line
@@ -14,8 +18,40 @@ define("port", default=8888, type=int)
 
 proctected_image_array = {}
 session_array = {}
+active_clients = set()
+
+class StartWatchDog(object):
+    def __init__(self):
+        # watch a set of directories
+        directory = "./static/protected_images/"
+        event_handler = Event()
+        observer = Observer()
+        observer.schedule(event_handler, directory, recursive=False)
+        observer.start()
+ 
+class Event(LoggingEventHandler):
+    #def on_modified(self, event):
+    #    print('modified file: %s' % event.src_path)
+    #    return
+    def on_created(self, event):
+        print('created file: %s' % event.src_path)
+        # Send the changes to all websocket clients
+        WebSocketHandler.send_to_all(event.src_path)        
+        return
+    def on_deleted(self, event):
+        print('deleted file: %s' % event.src_path)
+        WebSocketHandler.send_to_all(event.src_path)
+        return        
 
 class StdLib():
+        
+    def doAction(self,action,data):
+        if action.upper() == 'SUBSCRIBE':
+            reply = {'controlCode':0, 'data': 'OK'}
+        else:
+            reply = {'controlCode':1006, 'data': 'message not understood'}
+        return reply
+
 
     def AddImageArray(self,filename,data):
         proctected_image_array[filename] = data
@@ -34,29 +70,41 @@ class StdLib():
         #
         global proctected_image_array
 
-        print('[OpenProtectedImage] - StdLib.OpenProtectedImage : Opening protected image [{}] -[{}]'.format(session,filename))
+        #print('[OpenProtectedImage] - StdLib.OpenProtectedImage : Opening protected image [{}] -[{}]'.format(session,filename))
 
         if filename == '' or filename is None:
             filename = 'lock.png'
+        
+        ext = filename.split('.')[-1]
+        print ('get only ext {}'.format(ext))
+        
+        if (ext.lower() in ['jpg','png','gif','jpeg']):
+            
+            #
+            # Filter out only the images
+            #
 
-        if self.CheckSession(session):
-            if filename in proctected_image_array:
-                print('loading {} from array'.format(filename))
-                return self.loadImage(filename)
-            else:
-                with open('./static/protected_images/'+filename,'rb') as prot_file:
-                    print('loading {} from file'.format(filename))
-                    self.AddImageArray(filename,prot_file.read())
+            if self.CheckSession(session):
+                if filename in proctected_image_array:
+                    print('loading {} from array'.format(filename))
                     return self.loadImage(filename)
-        else:
-            if "lock.png" in proctected_image_array:
-                print('loading {} from array'.format('lock.png'))
-                return self.loadImage("lock.png")
+                else:
+                    with open('./static/protected_images/'+filename,'rb') as prot_file:
+                        print('loading {} from file'.format(filename))
+                        self.AddImageArray(filename,prot_file.read())
+                        return self.loadImage(filename)
             else:
-                with open('./static/images/lock.png','rb') as prot_file:
-                    print('loading {} from file'.format('lock.png'))
-                    self.AddImageArray("lock.png",prot_file.read())
+                if "lock.png" in proctected_image_array:
+                    print('loading {} from array'.format('lock.png'))
                     return self.loadImage("lock.png")
+                else:
+                    with open('./static/images/lock.png','rb') as prot_file:
+                        print('loading {} from file'.format('lock.png'))
+                        self.AddImageArray("lock.png",prot_file.read())
+                        return self.loadImage("lock.png")
+        else:
+            print('not an image')
+            return False
     
     def CheckSessionDB(self,sessions):
         # check if the session is valid
@@ -148,7 +196,6 @@ class StdLib():
             return True
 StdLib = StdLib()
 
-
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
         print("MainHandler")
@@ -197,7 +244,10 @@ class DashboardHandler(tornado.web.RequestHandler):
             #
             # List all files in the proctected images folder
             #
-            protected_files = [f for f in listdir('./static/protected_images') if isfile(join('./static/protected_images', f))]
+            protected_files = []
+            for file in listdir("./static/protected_images"):
+                if file.endswith(".png" or ".jpg" or ".jpeg" or ".gif"):
+                    protected_files.append(file)
 
             self.render("./views/dashboard.html",title="Dashboard", sessionkey=session, images=protected_files)
         else:
@@ -215,7 +265,7 @@ class LoadImageHandler(tornado.web.RequestHandler):
         # Call the OpenProtectedImage function 
         #
 
-        print('filename: ' + filename)
+        #print('filename: ' + filename)
 
         data = StdLib.OpenProtectedImage(session,filename)
 
@@ -234,26 +284,54 @@ class WebSocketHandler(ws.WebSocketHandler):
         # all new connections will get this message
         # so what we need to do is to pair the same client with the same session
         # still thinking on how to do this
+        print("[{}/{}] new connection".format(self,len(active_clients)))
         self.write_message({'controlCode':0, 'action': 'challenge', 'data': ''})
+    
+    def send_to_all(self,message):
+        for client in active_clients:
+            client.write_message(message)
 
     def on_message(self, message):
         reply = {"action": "error", "data": "message not understood"}
-        try:
-            Jmessage = json.loads(message)
-            sessionkey = Jmessage['session']
-            if (StdLib.CheckSession(sessionkey)):
-                print('sessionkey: ' + sessionkey + ', is valid')
-                reply = {'controlCode':0, 'data': 'OK'}
-            else:
-                print('sessionkey: ' + sessionkey + ', is invalid')
-                reply = {'controlCode':1003, 'data': 'session not valid'}
-        except:
-            reply = {'controlCode':1005,'data': 'invalid sessionkey'}
-        print("New message {}".format(Jmessage))
+        #try:
+        #
+        # Parse the message to JSON
+        #
+        Jmessage = json.loads(message)
+        sessionkey = Jmessage['session']
+        
+        #
+        # Make sure the session is valid
+        #
+        if (StdLib.CheckSession(sessionkey)):
+            #
+            # Ok Session is valid, now see what is the action
+            #
+            action = Jmessage['action']
+            data = Jmessage['data']
+            reply = StdLib.doAction(action,data)
+            active_clients.add(self)
+            print("[{}/{}] new connection".format(self,len(active_clients)))
+
+    
+        else:
+            print('sessionkey: ' + sessionkey + ', is invalid')
+            reply = {'controlCode':1003, 'data': 'session not valid'}
         self.write_message(reply)
+        if reply['controlCode'] == 0:
+            pass
+        else:
+            self.close()
+        #except Exception as e:
+        #    print('Error: ' + str(e))
+        #    self.close()
 
     def on_close(self):
-        print("Connection closed")
+        try:
+            active_clients.remove(self)
+        except:
+            pass
+        print("[{}] Connection closed".format(self))
         
     def check_origin(self, origin):
         return True    
@@ -274,6 +352,7 @@ def make_app():
 
 if __name__ == "__main__":
     print('Server Started...')
+    StartWatchDog()
     app = make_app()
     app.listen(options.port)
-    tornado.ioloop.IOLoop.instance().start()
+    tornado.ioloop.IOLoop.current().start()
