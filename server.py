@@ -1,15 +1,17 @@
 import re
+import asyncio
 import tornado.ioloop
 import tornado.web
 import tornado.websocket as ws
+import tornado.platform.asyncio
 import json
 import sqlite3
 import time
 import hashlib
 import uuid
-import logging
-from watchdog.observers import Observer
-from watchdog.events import LoggingEventHandler
+import os
+from tracemalloc import stop
+from watchgod import awatch
 from os import listdir
 from os.path import isfile, join
 from tornado.options import define, options, parse_command_line
@@ -18,30 +20,18 @@ define("port", default=8888, type=int)
 
 proctected_image_array = {}
 session_array = {}
-active_clients = set()
-
-class StartWatchDog(object):
-    def __init__(self):
-        # watch a set of directories
-        directory = "./static/protected_images/"
-        event_handler = Event()
-        observer = Observer()
-        observer.schedule(event_handler, directory, recursive=False)
-        observer.start()
- 
-class Event(LoggingEventHandler):
-    #def on_modified(self, event):
-    #    print('modified file: %s' % event.src_path)
-    #    return
-    def on_created(self, event):
-        print('created file: %s' % event.src_path)
-        # Send the changes to all websocket clients
-        WebSocketHandler.send_to_all(event.src_path)        
-        return
-    def on_deleted(self, event):
-        print('deleted file: %s' % event.src_path)
-        WebSocketHandler.send_to_all(event.src_path)
-        return        
+active_clients = []
+        
+async def watch():
+    async for changes in awatch('./static/protected_images/'):
+            changeArr = str(changes).split(',')
+            print(changeArr)
+            action = changeArr[0][3:-4]
+            controlCode = changeArr[0][len(changeArr[0][:-2]):-1]
+            path = changeArr[1][2:-3]
+            reply = {'controlCode': controlCode, 'data': [{'action': action, 'path': path}]}
+            for client in active_clients:
+                await client.write_message(reply)  
 
 class StdLib():
         
@@ -286,10 +276,6 @@ class WebSocketHandler(ws.WebSocketHandler):
         # still thinking on how to do this
         print("[{}/{}] new connection".format(self,len(active_clients)))
         self.write_message({'controlCode':0, 'action': 'challenge', 'data': ''})
-    
-    def send_to_all(self,message):
-        for client in active_clients:
-            client.write_message(message)
 
     def on_message(self, message):
         reply = {"action": "error", "data": "message not understood"}
@@ -310,7 +296,7 @@ class WebSocketHandler(ws.WebSocketHandler):
             action = Jmessage['action']
             data = Jmessage['data']
             reply = StdLib.doAction(action,data)
-            active_clients.add(self)
+            active_clients.append(self)
             print("[{}/{}] new connection".format(self,len(active_clients)))
 
     
@@ -334,10 +320,9 @@ class WebSocketHandler(ws.WebSocketHandler):
         print("[{}] Connection closed".format(self))
         
     def check_origin(self, origin):
-        return True    
-
-def make_app():
-    return tornado.web.Application([
+        return True 
+    
+application =  tornado.web.Application([
         (r"/", MainHandler), # The root path
         (r'/ws/', WebSocketHandler),
         (r"/api/login", LoginHandler), # The API to login
@@ -351,8 +336,18 @@ def make_app():
     ])
 
 if __name__ == "__main__":
-    print('Server Started...')
-    StartWatchDog()
-    app = make_app()
-    app.listen(options.port)
-    tornado.ioloop.IOLoop.current().start()
+
+    http_server = tornado.httpserver.HTTPServer(application)
+    http_server.listen(options.port)
+    
+    try:
+        print('Server Started...')
+        #tornado.ioloop.IOLoop.instance().start()
+        tornado.platform.asyncio.AsyncIOMainLoop().install()
+        ioloop = asyncio.get_event_loop()        
+        ioloop.run_until_complete(watch())
+        ioloop.run_forever()
+    except KeyboardInterrupt:
+        http_server.stop()
+        print('Server Stopped...')
+        os._exit(0)
