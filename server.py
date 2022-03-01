@@ -1,4 +1,3 @@
-import re
 import asyncio
 import tornado.ioloop
 import tornado.web
@@ -8,7 +7,6 @@ import json
 import sqlite3
 import time
 import hashlib
-import uuid
 import os
 from tracemalloc import stop
 from watchgod import awatch
