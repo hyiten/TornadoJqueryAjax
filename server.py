@@ -36,8 +36,6 @@ class StdLib():
     def doAction(self,action,data):
         if action.upper() == 'SUBSCRIBE':
             reply = {'controlCode':0, 'data': 'OK'}
-        elif action.upper() == 'LOADIMAGE':
-            pass
         else:
             reply = {'controlCode':1006, 'data': 'message not understood'}
         return reply
@@ -281,7 +279,7 @@ class WebSocketHandler(ws.WebSocketHandler):
         self.write_message({'controlCode':0, 'action': 'challenge', 'data': ''})
 
     def on_message(self, message):
-        reply = {"action": "error", "data": "message not understood"}
+        reply = {"controlCode":1003, "action": "error", "data": "message not understood"}
         #try:
         #
         # Parse the message to JSON

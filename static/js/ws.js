@@ -29,38 +29,43 @@ function connect() {
     var urlParams = new URLSearchParams(queryString);
     var sessionkey = urlParams.get("sessionkey");
 
-    if (jsonData.controlCode == 0) {
-      console.log('Message:', jsonData);
-    } else if (jsonData.controlCode == 1) {
-      action = jsonData.data[0].action
-      path = jsonData.data[0].path
-      //location.reload()
-      try {
-        var divRoot = document.getElementById("imgRoot")
-        var newDiv = document.createElement("div")
-        var img = document.createElement("img")
-        var filename = path.substring(path.lastIndexOf('/')+1);
-        img.src = "/api/loadimage?sessionkey="+sessionkey+"&filename="+filename
-        newDiv.id = "imgTable_" + filename.replace(" ","_")
-        newDiv.className = "col-md-4 mt-3 col-lg-3"
-        img.id = filename
-        document.getElementById("imgRoot").appendChild(newDiv)
-        var imgTable = document.getElementById("imgTable_" + filename.replace(" ","_"))
+    console.log(`incoming data: ${jsonData.data.length} : ${jsonData.data}`);
 
-        imgTable.appendChild(img)
-      } catch (error) {
-        console.log(`Error: ${error}`)
-      }
-    } else if (jsonData.controlCode == 3) {
-      action = jsonData.data[0].action
-      path = jsonData.data[0].path
-      //location.reload()
-      try {
-        var filename = path.substring(path.lastIndexOf('/')+1);
-        var imgTable = document.getElementById("imgTable_" + filename.replace(" ","_"))
-        imgTable.remove(imgTable)
-      } catch (error) {
-        console.log("skipping")
+    for (var i = 0; i < jsonData.data.length; i++) {
+      var data = jsonData.data[i];
+
+      //console.log(`in-loop data: ${JSON.stringify(data)}`);
+      console.log(`in-loop data: ${data.action}`);
+
+      if (data.action) {
+        try {
+          action = String(data.action)
+
+          if (action.toUpperCase() == "CHANGE.ADDED") {
+            var newDiv = document.createElement("div")
+            var img = document.createElement("img")
+            var filename = data.path.substring(data.path.lastIndexOf('/') + 1);
+            img.src = "/api/loadimage?sessionkey=" + sessionkey + "&filename=" + filename
+            newDiv.id = "imgTable_" + filename.replace(" ", "_")
+            newDiv.className = "col-md-4 mt-3 col-lg-3"
+            img.id = filename
+            document.getElementById("imgRoot").appendChild(newDiv)
+            var imgTable = document.getElementById("imgTable_" + filename.replace(" ", "_"))
+
+            imgTable.appendChild(img)
+          } else if (data.action.toUpperCase() == "CHANGE.DELETED") {
+            try {
+              var filename = data.path.substring(data.path.lastIndexOf('/') + 1);
+              var imgTable = document.getElementById("imgTable_" + filename.replace(" ", "_"))
+              imgTable.remove(imgTable)
+            } catch (error) {
+              console.log("skipping")
+            }
+
+          }
+        } catch (error) {
+          console.log(`Error: ${error}`)
+        }
       }
     }
   };
