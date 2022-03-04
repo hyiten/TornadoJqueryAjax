@@ -36,6 +36,8 @@ class StdLib():
     def doAction(self,action,data):
         if action.upper() == 'SUBSCRIBE':
             reply = {'controlCode':0, 'data': 'OK'}
+        elif action.upper() == 'LOADIMAGE':
+            pass
         else:
             reply = {'controlCode':1006, 'data': 'message not understood'}
         return reply
@@ -217,6 +219,9 @@ class LoginHandler(tornado.web.RequestHandler):
             data = { "status": "failed", "message": "Username/Password mismatch", "url": "/"}
         self.write(data)      
 
+def imgReplace(theStr):
+    return theStr.replace(" ","_")
+
 class DashboardHandler(tornado.web.RequestHandler):
     def get(self):
         #
@@ -237,7 +242,7 @@ class DashboardHandler(tornado.web.RequestHandler):
                 if file.endswith(".png" or ".jpg" or ".jpeg" or ".gif"):
                     protected_files.append(file)
 
-            self.render("./views/dashboard.html",title="Dashboard", sessionkey=session, images=protected_files)
+            self.render("./views/dashboard.html",title="Dashboard", sessionkey=session, images=protected_files, imgReplace=imgReplace)
         else:
             self.redirect("/")
 

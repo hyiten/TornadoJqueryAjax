@@ -25,16 +25,43 @@ function connect() {
     // process the message
     var jsonData = JSON.parse(e.data);
     //console.log(jsonData);
+    var queryString = window.location.search;
+    var urlParams = new URLSearchParams(queryString);
+    var sessionkey = urlParams.get("sessionkey");
+
     if (jsonData.controlCode == 0) {
       console.log('Message:', jsonData);
     } else if (jsonData.controlCode == 1) {
       action = jsonData.data[0].action
       path = jsonData.data[0].path
-      location.reload()
+      //location.reload()
+      try {
+        var divRoot = document.getElementById("imgRoot")
+        var newDiv = document.createElement("div")
+        var img = document.createElement("img")
+        var filename = path.substring(path.lastIndexOf('/')+1);
+        img.src = "/api/loadimage?sessionkey="+sessionkey+"&filename="+filename
+        newDiv.id = "imgTable_" + filename.replace(" ","_")
+        newDiv.className = "col-md-4 mt-3 col-lg-3"
+        img.id = filename
+        document.getElementById("imgRoot").appendChild(newDiv)
+        var imgTable = document.getElementById("imgTable_" + filename.replace(" ","_"))
+
+        imgTable.appendChild(img)
+      } catch (error) {
+        console.log(`Error: ${error}`)
+      }
     } else if (jsonData.controlCode == 3) {
       action = jsonData.data[0].action
       path = jsonData.data[0].path
-      location.reload()
+      //location.reload()
+      try {
+        var filename = path.substring(path.lastIndexOf('/')+1);
+        var imgTable = document.getElementById("imgTable_" + filename.replace(" ","_"))
+        imgTable.remove(imgTable)
+      } catch (error) {
+        console.log("skipping")
+      }
     }
   };
 
